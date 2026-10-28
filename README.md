@@ -21,6 +21,12 @@ The MySQL data files are stored under `%LOCALAPPDATA%\GSBusanzaAccounting\mysql-
 
 The current authentication setup supports one accountant account configured through private environment variables. Do not expose the API publicly without HTTPS and an operational deployment configuration.
 
+## Deploy to Vercel
+
+The root `vercel.json` builds the frontend and routes `/api/*` to an Express serverless function. In Vercel, import `banyitayves/gsbaccounting` with the project root set to the repository root. Before the first production deployment, provision a reachable managed MySQL database and add its connection settings in the Vercel project’s Environment Variables; never commit production credentials. You may set `DATABASE_URL` to the provider’s MySQL connection URI, or set `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` separately. Set `DB_SSL=true` when the provider requires verified TLS.
+
+Also configure `ADMIN_USERNAME`, a unique `ADMIN_PASSWORD` of at least 12 characters, `ADMIN_DISPLAY_NAME`, and a random `JWT_SECRET` of at least 32 characters. Keep these production values separate from the local `backend/.env`; do not reuse the development credentials. The API initializes its table and year indexes on its first request. Set `FRONTEND_ORIGIN` to the deployed app’s origin if using cross-origin access; the default same-origin Vercel setup does not require cross-origin API calls. Apply environment variable changes to the deployment and verify `/api/health` reports a connected database before entering financial data.
+
 ## Registers and workflow
 
 - **Stock register:** dated movements with item code, opening + received − issued = balance, incoming/outgoing references, store location, issue purpose, preparer/checker, and remarks.

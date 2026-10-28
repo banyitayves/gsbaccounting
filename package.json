@@ -1,0 +1,13 @@
+{
+  "name": "gs-busanza-accounting",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace frontend",
+    "lint": "npm run lint --workspace frontend"
+  }
+}

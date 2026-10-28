@@ -17,14 +17,15 @@ const jwtSecret = process.env.JWT_SECRET || ''
 const sessionCookie = 'gs_busanza_session'
 const sessionDurationMs = 8 * 60 * 60 * 1000
 let adminPasswordHash = ''
-const pool = mysql.createPool({
+const pool = mysql.createPool(process.env.DATABASE_URL || {
   host: process.env.DB_HOST || 'localhost',
   port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'gs_busanza_accounting',
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: true } : undefined,
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 5,
   queueLimit: 0,
 })
 
@@ -287,7 +288,7 @@ app.use((error, _request, response, _next) => {
   response.status(500).json({ error: 'The accounting service could not complete the request.' })
 })
 
-async function start() {
+async function initialize() {
   if (
     !adminUsername
     || adminPassword.length < 12
@@ -342,10 +343,26 @@ async function start() {
   if (!yearIndex.length) {
     await pool.execute('CREATE INDEX idx_accounting_records_years ON accounting_records (academic_year, fiscal_year, record_type, created_at)')
   }
-  app.listen(port, () => console.log(`GS Busanza accounting API listening on http://localhost:${port}`))
 }
 
-start().catch((error) => {
-  console.error('Could not start the accounting API. Check the MySQL service and backend/.env settings.', error)
-  process.exitCode = 1
-})
+let initialization
+export function initializeServer() {
+  if (!initialization) {
+    initialization = initialize().catch((error) => {
+      initialization = undefined
+      throw error
+    })
+  }
+  return initialization
+}
+
+export { app }
+
+if (process.env.VERCEL !== '1') {
+  initializeServer()
+    .then(() => app.listen(port, () => console.log(`GS Busanza accounting API listening on http://localhost:${port}`)))
+    .catch((error) => {
+      console.error('Could not start the accounting API. Check the MySQL service and backend/.env settings.', error)
+      process.exitCode = 1
+    })
+}
