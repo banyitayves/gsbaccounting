@@ -480,13 +480,31 @@ async function initialize() {
       UNIQUE KEY uq_accounting_users_username (username)
     ) ENGINE=InnoDB
   `)
-  const [accountants] = await pool.execute('SELECT id FROM accounting_users WHERE username = ? LIMIT 1', [adminUsername])
+  const [accountants] = await pool.execute(
+    'SELECT id, display_name, role, stock_location, password_hash FROM accounting_users WHERE username = ? LIMIT 1',
+    [adminUsername],
+  )
   if (!accountants.length) {
     const passwordHash = await bcrypt.hash(adminPassword, 12)
     await pool.execute(
       'INSERT INTO accounting_users (username, display_name, role, stock_location, password_hash) VALUES (?, ?, ?, NULL, ?)',
       [adminUsername, adminDisplayName, 'accountant', passwordHash],
     )
+  } else {
+    const accountant = accountants[0]
+    const passwordMatches = await bcrypt.compare(adminPassword, accountant.password_hash)
+    if (
+      !passwordMatches
+      || accountant.display_name !== adminDisplayName
+      || accountant.role !== 'accountant'
+      || accountant.stock_location !== null
+    ) {
+      const passwordHash = passwordMatches ? accountant.password_hash : await bcrypt.hash(adminPassword, 12)
+      await pool.execute(
+        'UPDATE accounting_users SET display_name = ?, role = ?, stock_location = NULL, password_hash = ? WHERE id = ?',
+        [adminDisplayName, 'accountant', passwordHash, accountant.id],
+      )
+    }
   }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS accounting_records (
