@@ -506,6 +506,10 @@ async function initialize() {
       )
     }
   }
+  await pool.execute(
+    'DELETE FROM accounting_users WHERE role = ? AND username <> ?',
+    ['accountant', adminUsername],
+  )
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS accounting_records (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
