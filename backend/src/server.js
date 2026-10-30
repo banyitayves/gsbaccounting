@@ -45,6 +45,9 @@ app.use(helmet())
 app.use(cors({ origin: allowedOrigin, credentials: true }))
 app.use(cookieParser())
 app.use(express.json({ limit: '32kb' }))
+app.use((_request, _response, next) => {
+  initializeServer().then(() => next(), next)
+})
 
 function validYear(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{4}$/.test(value)) return false
@@ -357,6 +360,7 @@ export function initializeServer() {
 }
 
 export { app }
+export default app
 
 if (process.env.VERCEL !== '1') {
   initializeServer()
