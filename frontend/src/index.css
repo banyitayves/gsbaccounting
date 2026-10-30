@@ -243,6 +243,14 @@ h1, h2, p { margin-top: 0; }
 .table-footer > div > span { width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid #dce4ef; border-radius: 4px; color: #315b88; background: #f3f7fc; }
 .register-hint { display: flex; align-items: center; gap: 8px; margin-top: 13px; color: #819082; font-size: 9px; }
 .register-hint svg { color: #6d9c79; }
+.staff-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 14px; }
+.staff-panel { padding: 17px 18px; }
+.staff-panel .panel-heading { margin-bottom: 16px; }
+.staff-form-grid { margin-top: 14px; }
+.staff-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.credential-notice { display: flex; flex-direction: column; gap: 6px; margin-top: 15px; padding: 12px; border: 1px solid #dcecdf; border-radius: 6px; color: #457a56; background: #f5fbf6; font-size: 10px; }
+.credential-notice code { padding: 2px 4px; border-radius: 3px; color: #30455a; background: #fff; font-family: ui-monospace, monospace; }
+.credential-notice small { margin-top: 3px; color: #77877b; }
 .approval-actions { display: flex; align-items: center; gap: 6px; }
 .approve-button, .reject-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 25px; padding: 0 8px; border-radius: 4px; font-size: 8px; font-weight: 600; }
 .approve-button { color: #4c865e; border: 1px solid #dcecdf; background: #f2f8f3; }
@@ -309,6 +317,8 @@ h1, h2, p { margin-top: 0; }
   .register-title-row .button { flex: 0 0 auto; margin-top: 14px; }
   .register-summary-row { overflow-x: auto; }
   .register-summary { min-width: 115px; padding: 9px; }
+  .staff-layout { grid-template-columns: 1fr; }
+  .staff-panel { padding: 14px 12px; }
   .demo-banner { align-items: flex-start; font-size: 9px; }
   .demo-status { font-size: 8px; }
 }

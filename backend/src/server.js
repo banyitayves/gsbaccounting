@@ -16,7 +16,6 @@ const adminDisplayName = process.env.ADMIN_DISPLAY_NAME || 'School Accountant'
 const jwtSecret = process.env.JWT_SECRET || ''
 const sessionCookie = 'gs_busanza_session'
 const sessionDurationMs = 8 * 60 * 60 * 1000
-let adminPasswordHash = ''
 const pool = mysql.createPool(process.env.DATABASE_URL || {
   host: process.env.DB_HOST || 'localhost',
   port: Number(process.env.DB_PORT || 3306),
@@ -65,6 +64,13 @@ function authenticate(request, response, next) {
     response.clearCookie(sessionCookie, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/' })
     return response.status(401).json({ error: 'Your session expired. Please sign in again.' })
   }
+}
+
+function requireAccountant(request, response, next) {
+  if (request.user.role !== 'accountant') {
+    return response.status(403).json({ error: 'Only the accountant can manage staff accounts.' })
+  }
+  return next()
 }
 
 const loginLimiter = rateLimit({
@@ -173,6 +179,21 @@ async function getRecords(type, academicYear, fiscalYear) {
   return records
 }
 
+function stockBalance(rows, location, itemCode) {
+  const normalizedCode = itemCode.trim().toLowerCase()
+  return rows.reduce((total, { payload }) => {
+    if (
+      String(payload.location || '').trim() !== location
+      || String(payload.item_code || '').trim().toLowerCase() !== normalizedCode
+    ) return total
+    return total + Number(payload.opening_qty || 0) + Number(payload.received_qty || 0) - Number(payload.issued_qty || 0)
+  }, 0)
+}
+
+function isDuplicateEntry(error) {
+  return error?.code === 'ER_DUP_ENTRY' || error?.code === '1062'
+}
+
 app.get('/api/health', async (_request, response, next) => {
   try {
     await pool.query('SELECT 1')
@@ -188,11 +209,22 @@ app.post('/api/auth/login', loginLimiter, async (request, response, next) => {
     return response.status(400).json({ error: 'Username and password are required.' })
   }
   try {
-    const matchesPassword = await bcrypt.compare(password, adminPasswordHash)
-    if (username !== adminUsername || !matchesPassword) {
+    const [rows] = await pool.execute(
+      'SELECT id, username, display_name, role, stock_location, password_hash FROM accounting_users WHERE username = ? LIMIT 1',
+      [username],
+    )
+    const account = rows[0]
+    const matchesPassword = account ? await bcrypt.compare(password, account.password_hash) : false
+    if (!matchesPassword) {
       return response.status(401).json({ error: 'Username or password is incorrect.' })
     }
-    const user = { username: adminUsername, displayName: adminDisplayName, role: 'accountant' }
+    const user = {
+      id: String(account.id),
+      username: account.username,
+      displayName: account.display_name,
+      role: account.role,
+      stockLocation: account.stock_location,
+    }
     const token = jwt.sign(user, jwtSecret, { expiresIn: '8h' })
     response.cookie(sessionCookie, token, {
       httpOnly: true,
@@ -216,12 +248,81 @@ app.post('/api/auth/logout', authenticate, (_request, response) => {
   response.status(204).end()
 })
 
+app.use('/api/users', authenticate, requireAccountant)
+
+app.get('/api/users', async (_request, response, next) => {
+  try {
+    const [users] = await pool.execute(
+      'SELECT id, username, display_name, role, stock_location, created_at FROM accounting_users ORDER BY created_at, id',
+    )
+    response.json({
+      users: users.map(({ id, username, display_name, role, stock_location, created_at }) => ({
+        id: String(id),
+        username,
+        displayName: display_name,
+        role,
+        stockLocation: stock_location,
+        createdAt: created_at,
+      })),
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/users', async (request, response, next) => {
+  const { username, password, displayName, stockLocation } = request.body || {}
+  if (
+    typeof username !== 'string'
+    || !/^[a-zA-Z0-9._-]{3,32}$/.test(username)
+    || typeof password !== 'string'
+    || password.length < 12
+    || password.length > 128
+    || typeof displayName !== 'string'
+    || !displayName.trim()
+    || displayName.trim().length > 120
+    || typeof stockLocation !== 'string'
+    || !stockLocation.trim()
+    || stockLocation.trim().length > 120
+  ) {
+    return response.status(400).json({
+      error: 'Provide a 3–32 character username, a 12–128 character password, a display name, and a stock location.',
+    })
+  }
+  try {
+    const passwordHash = await bcrypt.hash(password, 12)
+    const [result] = await pool.execute(
+      'INSERT INTO accounting_users (username, display_name, role, stock_location, password_hash) VALUES (?, ?, ?, ?, ?)',
+      [username.trim(), displayName.trim(), 'storekeeper', stockLocation.trim(), passwordHash],
+    )
+    response.status(201).json({
+      user: {
+        id: String(result.insertId),
+        username: username.trim(),
+        displayName: displayName.trim(),
+        role: 'storekeeper',
+        stockLocation: stockLocation.trim(),
+      },
+    })
+  } catch (error) {
+    if (isDuplicateEntry(error)) {
+      return response.status(409).json({ error: 'That username is already in use.' })
+    }
+    next(error)
+  }
+})
+
 app.use('/api/records', authenticate)
 
 app.get('/api/records', async (request, response, next) => {
   const years = getYearFilters(request, response)
   if (!years) return
   try {
+    if (request.user.role === 'storekeeper') {
+      const records = Object.fromEntries([...recordTypes].map((recordType) => [recordType, []]))
+      records.stock = (await getRecords('stock', ...years)).filter((row) => row.location === request.user.stockLocation)
+      return response.json({ records })
+    }
     response.json({ records: await getRecords(undefined, ...years) })
   } catch (error) {
     next(error)
@@ -231,10 +332,17 @@ app.get('/api/records', async (request, response, next) => {
 app.get('/api/records/:type', async (request, response, next) => {
   const { type } = request.params
   if (!recordTypes.has(type)) return response.status(404).json({ error: 'Register not found.' })
+  if (request.user.role === 'storekeeper' && type !== 'stock') {
+    return response.status(403).json({ error: 'Storekeepers can only access their assigned stock.' })
+  }
   const years = getYearFilters(request, response)
   if (!years) return
   try {
-    response.json({ records: await getRecords(type, ...years) })
+    let records = await getRecords(type, ...years)
+    if (request.user.role === 'storekeeper') {
+      records = records.filter((row) => row.location === request.user.stockLocation)
+    }
+    response.json({ records })
   } catch (error) {
     next(error)
   }
@@ -243,9 +351,63 @@ app.get('/api/records/:type', async (request, response, next) => {
 app.post('/api/records/:type', async (request, response, next) => {
   const { type } = request.params
   if (!recordTypes.has(type)) return response.status(404).json({ error: 'Register not found.' })
+  if (request.user.role === 'storekeeper' && type !== 'stock') {
+    return response.status(403).json({ error: 'Storekeepers can only record movements in their assigned stock.' })
+  }
   const payload = validateRecord(type, request.body)
   if (typeof payload === 'string') return response.status(400).json({ error: payload })
+  if (type === 'stock') {
+    if (request.user.role === 'storekeeper' && payload.location !== request.user.stockLocation) {
+      return response.status(403).json({ error: 'Stock movements must use your assigned store location.' })
+    }
+    payload.recorded_by = request.user.username
+    if (request.user.role === 'storekeeper' && !payload.prepared_by) payload.prepared_by = request.user.displayName
+  }
   try {
+    if (type === 'stock') {
+      const connection = await pool.getConnection()
+      let transactionStarted = false
+      try {
+        await connection.beginTransaction()
+        transactionStarted = true
+        const [stockRows] = await connection.execute(
+          'SELECT payload FROM accounting_records WHERE record_type = ? AND academic_year = ? AND fiscal_year = ? FOR UPDATE',
+          ['stock', payload.academic_year, payload.fiscal_year],
+        )
+        const existingRows = stockRows.filter(({ payload: row }) => (
+          String(row.location || '').trim() === payload.location
+          && String(row.item_code || '').trim().toLowerCase() === payload.item_code.trim().toLowerCase()
+        ))
+        const available = stockBalance(stockRows, payload.location, payload.item_code)
+        const opening = Number(payload.opening_qty || 0)
+        const received = Number(payload.received_qty || 0)
+        const issued = Number(payload.issued_qty || 0)
+        if (existingRows.length && opening > 0) {
+          await connection.rollback()
+          transactionStarted = false
+          return response.status(400).json({ error: 'Opening quantity can only be entered for a new item. Use Quantity received for existing stock.' })
+        }
+        if (issued > available + opening + received) {
+          await connection.rollback()
+          transactionStarted = false
+          return response.status(400).json({
+            error: `Cannot issue ${issued} units; only ${Math.max(0, available + opening + received)} units are available at this store.`,
+          })
+        }
+        const [result] = await connection.execute(
+          'INSERT INTO accounting_records (record_type, academic_year, fiscal_year, payload) VALUES (?, ?, ?, ?)',
+          [type, payload.academic_year, payload.fiscal_year, JSON.stringify(payload)],
+        )
+        await connection.commit()
+        transactionStarted = false
+        return response.status(201).json({ record: { id: String(result.insertId), ...payload } })
+      } catch (error) {
+        if (transactionStarted) await connection.rollback()
+        throw error
+      } finally {
+        connection.release()
+      }
+    }
     const [result] = await pool.execute(
       'INSERT INTO accounting_records (record_type, academic_year, fiscal_year, payload) VALUES (?, ?, ?, ?)',
       [type, payload.academic_year, payload.fiscal_year, JSON.stringify(payload)],
@@ -258,6 +420,9 @@ app.post('/api/records/:type', async (request, response, next) => {
 
 app.patch('/api/records/:type/:id', async (request, response, next) => {
   const { type, id } = request.params
+  if (request.user.role !== 'accountant') {
+    return response.status(403).json({ error: 'Only the accountant can review approval requests.' })
+  }
   if (type !== 'approvals') return response.status(404).json({ error: 'This register does not support updates.' })
   if (!/^\d+$/.test(id)) return response.status(400).json({ error: 'Record id is invalid.' })
   const { status } = request.body
@@ -301,8 +466,28 @@ async function initialize() {
   ) {
     throw new Error('Set ADMIN_USERNAME, an ADMIN_PASSWORD of at least 12 characters, and a JWT_SECRET of at least 32 characters in backend/.env.')
   }
-  adminPasswordHash = await bcrypt.hash(adminPassword, 12)
   await pool.query('SELECT 1')
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS accounting_users (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      username VARCHAR(32) NOT NULL,
+      display_name VARCHAR(120) NOT NULL,
+      role ENUM('accountant', 'storekeeper') NOT NULL,
+      stock_location VARCHAR(120) NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_accounting_users_username (username)
+    ) ENGINE=InnoDB
+  `)
+  const [accountants] = await pool.execute('SELECT id FROM accounting_users WHERE username = ? LIMIT 1', [adminUsername])
+  if (!accountants.length) {
+    const passwordHash = await bcrypt.hash(adminPassword, 12)
+    await pool.execute(
+      'INSERT INTO accounting_users (username, display_name, role, stock_location, password_hash) VALUES (?, ?, ?, NULL, ?)',
+      [adminUsername, adminDisplayName, 'accountant', passwordHash],
+    )
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS accounting_records (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

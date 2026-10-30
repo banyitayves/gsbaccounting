@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Utensils,
+  Users,
   Wallet,
   X,
 } from 'lucide-react'
@@ -34,6 +35,7 @@ const modules = [
   { id: 'feeding', label: 'School feeding', icon: Utensils },
   { id: 'suppliers', label: 'Suppliers', icon: CircleDollarSign },
   { id: 'approvals', label: 'Approvals', icon: ClipboardCheck },
+  { id: 'staff', label: 'Staff access', icon: Users },
 ]
 
 const definitions = {
@@ -56,6 +58,7 @@ const definitions = {
       ['issued_to', 'Issued to / purpose'],
       ['prepared_by', 'Prepared by'],
       ['checked_by', 'Checked by'],
+      ['recorded_by', 'Recorded by'],
       ['remarks', 'Remarks'],
     ],
     fields: [
@@ -421,7 +424,10 @@ function App() {
     let activeEffect = true
     request('/auth/me')
       .then(({ user: sessionUser }) => {
-        if (activeEffect) setUser(sessionUser)
+        if (activeEffect) {
+          setUser(sessionUser)
+          if (sessionUser.role === 'storekeeper') setActive('stock')
+        }
       })
       .catch((error) => {
         if (!activeEffect) return
@@ -511,6 +517,7 @@ function App() {
         body: JSON.stringify({ username, password }),
       })
       setUser(sessionUser)
+      setActive(sessionUser.role === 'storekeeper' ? 'stock' : 'dashboard')
     } catch (error) {
       setAuthError(error.status >= 500 || !error.status
         ? `The accounting service is unavailable. Start the backend and check its MySQL settings. (${error.message})`
@@ -583,7 +590,8 @@ function App() {
     URL.revokeObjectURL(link.href)
   }
 
-  const currentModule = modules.find((item) => item.id === active)
+  const availableModules = user.role === 'accountant' ? modules : modules.filter((item) => item.id === 'stock')
+  const currentModule = availableModules.find((item) => item.id === active) || modules.find((item) => item.id === 'stock')
   const profileInitials = user.displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
 
   return (
@@ -601,7 +609,7 @@ function App() {
         </div>
         <div className="nav-label">WORKSPACE</div>
         <nav className="navigation" aria-label="Main navigation">
-          {modules.map(({ id, label, icon: Icon }) => (
+          {availableModules.map(({ id, label, icon: Icon }) => (
             <button key={id} className={`nav-item ${active === id ? 'selected' : ''}`} onClick={() => { setActive(id); setSearch(''); setAttentionOnly(false); setMenuOpen(false) }}>
               <Icon size={18} strokeWidth={1.8} /><span>{label}</span>
               {id === 'approvals' && pendingCount > 0 && <span className="nav-count">{pendingCount}</span>}
@@ -615,7 +623,7 @@ function App() {
           </div>
           <div className="profile">
             <div className="profile-avatar">{profileInitials}</div>
-            <div className="profile-copy"><strong>{user.displayName}</strong><small>Accountant</small></div>
+            <div className="profile-copy"><strong>{user.displayName}</strong><small>{user.role === 'accountant' ? 'Accountant' : `Storekeeper · ${user.stockLocation}`}</small></div>
             <button className="logout-button" onClick={signOut} aria-label="Log out" title="Log out"><LogOut size={16} /><span>Log out</span></button>
           </div>
         </div>
@@ -626,7 +634,7 @@ function App() {
           <button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Open menu"><Menu size={20} /></button>
           <div className="breadcrumb">Finance <ChevronRight size={14} /> <strong>{currentModule.label}</strong></div>
           <div className="topbar-actions">
-            <button className="icon-button notification-button" onClick={() => { setActive('approvals'); setSearch(''); setAttentionOnly(true) }} aria-label="Open pending approvals"><Bell size={18} /><i /></button>
+            {user.role === 'accountant' && <button className="icon-button notification-button" onClick={() => { setActive('approvals'); setSearch(''); setAttentionOnly(true) }} aria-label="Open pending approvals"><Bell size={18} /><i /></button>}
             <div className="top-avatar">{profileInitials}</div>
           </div>
         </header>
@@ -638,9 +646,11 @@ function App() {
             <label><span>Fiscal year</span><select value={fiscalYear} onChange={(event) => setFiscalYear(event.target.value)}>{yearOptions.map((year) => <option key={year}>{year}</option>)}</select></label>
             <span className="year-hint">Records are separated by both selected years.</span>
           </div>
-          {active === 'dashboard'
+          {active === 'dashboard' && user.role === 'accountant'
             ? <Dashboard records={scopedRecords} pendingCount={pendingCount} paymentTotal={paymentTotal} onNavigate={(module) => { setActive(module); setSearch(''); setAttentionOnly(false) }} loading={loading} displayName={user.displayName} />
-            : <RegisterPage
+            : active === 'staff' && user.role === 'accountant'
+              ? <StaffPage onNotice={setNotice} />
+              : <RegisterPage
                 type={active}
                 rows={filteredRows}
                 query={search}
@@ -656,7 +666,7 @@ function App() {
         </div>
       </main>
 
-      {modal && <RecordModal type={active} onClose={() => setModal(false)} onSave={saveRecord} />}
+      {modal && <RecordModal type={active} assignedLocation={user.role === 'storekeeper' ? user.stockLocation : ''} onClose={() => setModal(false)} onSave={saveRecord} />}
       {notice && <div className={`toast ${notice.startsWith('Could not') ? 'toast-error' : ''}`}><CheckCircle2 size={18} />{notice}<button onClick={() => setNotice('')} aria-label="Dismiss"><X size={16} /></button></div>}
     </div>
   )
@@ -687,10 +697,105 @@ function SignInPage({ onSignIn, error }) {
           {error && <div className="signin-error" role="alert">{error}</div>}
           <button className="button button-primary signin-submit" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</button>
         </form>
-        <div className="signin-footer"><ShieldCheck size={15} /> Secure accountant access</div>
-        <div className="signin-setup-note">Account access is configured privately in <code>backend/.env</code>.</div>
+        <div className="signin-footer"><ShieldCheck size={15} /> Secure role-based access</div>
+        <div className="signin-setup-note">Contact the accountant if you need account access.</div>
       </section>
     </main>
+  )
+}
+
+function generatePassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*'
+  const randomValues = new Uint8Array(24)
+  window.crypto.getRandomValues(randomValues)
+  return Array.from(randomValues, (value) => alphabet[value % alphabet.length]).join('')
+}
+
+function StaffPage() {
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [credential, setCredential] = useState(null)
+  const [form, setForm] = useState(() => ({
+    displayName: 'Marius',
+    username: 'marius',
+    stockLocation: 'Main Store',
+    password: generatePassword(),
+  }))
+
+  useEffect(() => {
+    let activeEffect = true
+    request('/users')
+      .then(({ users: loadedUsers }) => {
+        if (activeEffect) setUsers(loadedUsers)
+      })
+      .catch((requestError) => {
+        if (activeEffect) setError(`Could not load staff accounts: ${requestError.message}`)
+      })
+      .finally(() => {
+        if (activeEffect) setLoading(false)
+      })
+    return () => { activeEffect = false }
+  }, [])
+
+  function updateField(event) {
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }))
+  }
+
+  async function createStaff(event) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    setCredential(null)
+    try {
+      const { user: createdUser } = await request('/users', {
+        method: 'POST',
+        body: JSON.stringify(form),
+      })
+      setUsers((current) => [...current, createdUser])
+      setCredential({ ...createdUser, password: form.password })
+      setForm((current) => ({
+        displayName: current.displayName === 'Marius' ? 'Basilice' : '',
+        username: current.username === 'marius' ? 'basilice' : '',
+        stockLocation: current.stockLocation === 'Main Store' ? 'Secondary Store' : '',
+        password: generatePassword(),
+      }))
+    } catch (requestError) {
+      setError(`Could not create staff account: ${requestError.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="register-title-row">
+        <div><div className="eyebrow">ACCOUNT MANAGEMENT</div><h1>Staff access</h1><p>Create storekeeper accounts and assign each person to a stock location.</p></div>
+      </div>
+      <div className="staff-layout">
+        <section className="panel staff-panel">
+          <div className="panel-heading"><div><h2>Create a storekeeper account</h2><p>Storekeepers can access and record movements only at their assigned stock location.</p></div></div>
+          <form onSubmit={createStaff}>
+            <div className="form-grid staff-form-grid">
+              <label><span>Display name</span><input name="displayName" value={form.displayName} onChange={updateField} required maxLength={120} /></label>
+              <label><span>Username</span><input name="username" value={form.username} onChange={updateField} required minLength={3} maxLength={32} pattern="[a-zA-Z0-9._-]+" autoComplete="off" /></label>
+              <label><span>Assigned store</span><input name="stockLocation" value={form.stockLocation} onChange={updateField} required maxLength={120} /></label>
+              <label><span>Temporary password (12+ characters)</span><input name="password" value={form.password} onChange={updateField} required minLength={12} maxLength={128} autoComplete="new-password" /></label>
+            </div>
+            <div className="staff-form-actions"><button type="button" className="button button-secondary" onClick={() => setForm((current) => ({ ...current, password: generatePassword() }))}>Generate password</button><button type="submit" className="button button-primary" disabled={saving}><Users size={15} />{saving ? 'Creating…' : 'Create account'}</button></div>
+            {error && <div className="form-error" role="alert">{error}</div>}
+          </form>
+          {credential && <div className="credential-notice" role="status"><strong>Copy these credentials now</strong><span>Username: <code>{credential.username}</code></span><span>Password: <code>{credential.password}</code></span><small>The password is shown only after account creation and cannot be viewed again.</small></div>}
+        </section>
+        <section className="panel staff-panel">
+          <div className="panel-heading"><div><h2>Existing accounts</h2><p>Account roles and stock assignments</p></div></div>
+          {loading ? <div className="table-empty"><span className="spinner" /> Loading staff accounts…</div>
+            : users.length === 0 ? <div className="table-empty"><strong>No staff accounts</strong><span>Create the first storekeeper account using the form.</span></div>
+              : <div className="table-scroll"><table className="data-table"><thead><tr><th>NAME</th><th>USERNAME</th><th>ROLE</th><th>ASSIGNED LOCATION</th></tr></thead><tbody>{users.map((staff) => <tr key={staff.id}><td><strong>{staff.displayName}</strong></td><td>{staff.username}</td><td>{staff.role === 'accountant' ? 'Accountant' : 'Storekeeper'}</td><td>{staff.stockLocation || 'All locations'}</td></tr>)}</tbody></table></div>}
+        </section>
+      </div>
+    </>
   )
 }
 
@@ -838,13 +943,14 @@ function StatusBadge({ value }) {
   return <span className={`status-badge ${tone}`}><i />{value}</span>
 }
 
-function RecordModal({ type, onClose, onSave }) {
+function RecordModal({ type, assignedLocation = '', onClose, onSave }) {
   const definition = definitions[type]
   const [form, setForm] = useState(() => Object.fromEntries(definition.fields.map(([key, , inputType]) => [
     key,
-    inputType === 'date' && ['date', 'request_date', 'submitted_at'].includes(key) ? new Date().toISOString().slice(0, 10)
-      : inputType === 'number' && (type === 'stock' || type === 'feeding' || type === 'suppliers' && key === 'outstanding') ? '0'
-        : '',
+    key === 'location' && assignedLocation ? assignedLocation
+      : inputType === 'date' && ['date', 'request_date', 'submitted_at'].includes(key) ? new Date().toISOString().slice(0, 10)
+        : inputType === 'number' && (type === 'stock' || type === 'feeding' || type === 'suppliers' && key === 'outstanding') ? '0'
+          : '',
   ])))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -869,7 +975,7 @@ function RecordModal({ type, onClose, onSave }) {
     setSaving(false)
   }
 
-  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><section className="record-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div className="modal-heading"><div><span className="eyebrow">NEW REGISTER ENTRY</span><h2 id="modal-title">Add {definition.singular}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><p className="modal-description">{definition.description}</p><form onSubmit={submit}><div className="form-grid">{definition.fields.map(([key, label, inputType, options]) => <label className={inputType === 'text' && ['description', 'title', 'notes', 'proof'].includes(key) ? 'form-wide' : ''} key={key}><span>{label}</span>{inputType === 'select' ? <select value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}><option value="">Select…</option>{options.map((option) => <option key={option}>{option}</option>)}</select> : <input type={inputType} min={inputType === 'number' ? '0' : undefined} step={inputType === 'number' ? 'any' : undefined} value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={inputType === 'number' ? '0' : ''} />}</label>)}</div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button type="submit" className="button button-primary" disabled={saving}><Plus size={15} />{saving ? 'Saving…' : 'Save record'}</button></div></form></section></div>
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><section className="record-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div className="modal-heading"><div><span className="eyebrow">NEW REGISTER ENTRY</span><h2 id="modal-title">Add {definition.singular}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close"><X size={18} /></button></div><p className="modal-description">{definition.description}</p><form onSubmit={submit}><div className="form-grid">{definition.fields.map(([key, label, inputType, options]) => <label className={inputType === 'text' && ['description', 'title', 'notes', 'proof'].includes(key) ? 'form-wide' : ''} key={key}><span>{label}</span>{inputType === 'select' ? <select value={form[key]} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}><option value="">Select…</option>{options.map((option) => <option key={option}>{option}</option>)}</select> : <input type={inputType} min={inputType === 'number' ? '0' : undefined} step={inputType === 'number' ? 'any' : undefined} value={form[key]} disabled={key === 'location' && Boolean(assignedLocation)} onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))} placeholder={inputType === 'number' ? '0' : ''} />}</label>)}</div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button type="submit" className="button button-primary" disabled={saving}><Plus size={15} />{saving ? 'Saving…' : 'Save record'}</button></div></form></section></div>
 }
 
 export default App

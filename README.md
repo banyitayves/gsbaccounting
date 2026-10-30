@@ -19,7 +19,9 @@ To restore a backup, start MySQL and run `powershell.exe -NoProfile -ExecutionPo
 
 The MySQL data files are stored under `%LOCALAPPDATA%\GSBusanzaAccounting\mysql-data`, outside the project. Database and accountant secrets are stored in `backend/.env`, which is excluded from Git and restricted to your Windows account and system administrators; the local MySQL administrator password is saved beside the database with the same access restrictions. Keep both locations private. Backups are also stored locally, so periodically copy them to a separate encrypted drive or approved off-device storage for protection against device loss. The API creates/migrates the register table at startup and indexes academic/fiscal year fields. Existing records without year tags are assigned to academic year 2026–2027 and fiscal year 2026–2027.
 
-The current authentication setup supports one accountant account configured through private environment variables. Do not expose the API publicly without HTTPS and an operational deployment configuration.
+The accountant account is initialized from the private `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `ADMIN_DISPLAY_NAME` environment variables. After signing in, the accountant can use **Staff access** to create storekeeper accounts and assign each one a stock location. The generated password is displayed only once after account creation, so share it securely with that staff member.
+
+Storekeepers can view and record stock movements only for their assigned location; other registers and approval actions are restricted to the accountant. The API enforces these permissions independently of the frontend. Stock issues are rejected when they exceed available stock, and each movement records the acting username. An item's opening quantity can only be recorded on its first entry; use received quantity for later replenishments. Do not expose the API publicly without HTTPS and an operational deployment configuration.
 
 ## Deploy to Vercel
 
