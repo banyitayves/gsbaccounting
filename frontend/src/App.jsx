@@ -779,7 +779,7 @@ function StaffPage() {
           <form onSubmit={createStaff}>
             <div className="form-grid staff-form-grid">
               <label><span>Display name</span><input name="displayName" value={form.displayName} onChange={updateField} required maxLength={120} /></label>
-              <label><span>Username</span><input name="username" value={form.username} onChange={updateField} required minLength={3} maxLength={32} pattern="[a-zA-Z0-9._\\-]+" autoComplete="off" /></label>
+              <label><span>Username</span><input name="username" value={form.username} onChange={updateField} required minLength={3} maxLength={32} pattern="(?:[a-zA-Z0-9._]|-)+" autoComplete="off" /></label>
               <label><span>Assigned store</span><input name="stockLocation" value={form.stockLocation} onChange={updateField} required maxLength={120} /></label>
               <label><span>Temporary password (12+ characters)</span><input name="password" value={form.password} onChange={updateField} required minLength={12} maxLength={128} autoComplete="new-password" /></label>
             </div>
