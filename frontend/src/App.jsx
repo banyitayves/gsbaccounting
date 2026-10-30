@@ -14,6 +14,7 @@ import {
   Clock3,
   FileCheck2,
   FileText,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -598,7 +599,7 @@ function App() {
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
         <div className="brand">
-          <div className="brand-mark"><span>GS</span></div>
+          <img className="brand-mark" src="/school-logo.png" alt="GS Busanza School" />
           <div><strong>GS BUSANZA</strong><small>FINANCE OFFICE</small></div>
           <button className="icon-button mobile-close" onClick={() => setMenuOpen(false)} aria-label="Close menu"><X size={18} /></button>
         </div>
@@ -687,7 +688,7 @@ function SignInPage({ onSignIn, error }) {
   return (
     <main className="signin-shell">
       <section className="signin-card">
-        <div className="brand-mark signin-mark"><span>GS</span></div>
+        <img className="brand-mark signin-mark" src="/school-logo.png" alt="GS Busanza School" />
         <div className="eyebrow signin-eyebrow">GS BUSANZA · FINANCE OFFICE</div>
         <h1>Sign in to your workspace</h1>
         <p>Access the school accounting registers and financial records.</p>
@@ -704,24 +705,20 @@ function SignInPage({ onSignIn, error }) {
   )
 }
 
-function generatePassword() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*'
-  const randomValues = new Uint8Array(24)
-  window.crypto.getRandomValues(randomValues)
-  return Array.from(randomValues, (value) => alphabet[value % alphabet.length]).join('')
-}
-
 function StaffPage() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [passwordSaving, setPasswordSaving] = useState(false)
   const [error, setError] = useState('')
-  const [credential, setCredential] = useState(null)
+  const [message, setMessage] = useState('')
+  const [passwordTarget, setPasswordTarget] = useState(null)
+  const [newPassword, setNewPassword] = useState('')
   const [form, setForm] = useState(() => ({
     displayName: 'Marius',
     username: 'marius',
     stockLocation: 'Main Store',
-    password: generatePassword(),
+    password: '',
   }))
 
   useEffect(() => {
@@ -747,24 +744,45 @@ function StaffPage() {
     event.preventDefault()
     setSaving(true)
     setError('')
-    setCredential(null)
+    setMessage('')
     try {
       const { user: createdUser } = await request('/users', {
         method: 'POST',
         body: JSON.stringify(form),
       })
       setUsers((current) => [...current, createdUser])
-      setCredential({ ...createdUser, password: form.password })
+      setMessage(`Account created for ${createdUser.displayName}. The password is not displayed or saved in the staff list.`)
       setForm((current) => ({
         displayName: current.displayName === 'Marius' ? 'Basilice' : '',
         username: current.username === 'marius' ? 'basilice' : '',
         stockLocation: current.stockLocation === 'Main Store' ? 'Secondary Store' : '',
-        password: generatePassword(),
+        password: '',
       }))
     } catch (requestError) {
       setError(`Could not create staff account: ${requestError.message}`)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function changePassword(event) {
+    event.preventDefault()
+    if (!passwordTarget) return
+    setPasswordSaving(true)
+    setError('')
+    setMessage('')
+    try {
+      await request(`/users/${passwordTarget.id}/password`, {
+        method: 'PATCH',
+        body: JSON.stringify({ password: newPassword }),
+      })
+      setMessage(`Password changed for ${passwordTarget.displayName}. The new password will not be shown again.`)
+      setPasswordTarget(null)
+      setNewPassword('')
+    } catch (requestError) {
+      setError(`Could not change password: ${requestError.message}`)
+    } finally {
+      setPasswordSaving(false)
     }
   }
 
@@ -781,20 +799,21 @@ function StaffPage() {
               <label><span>Display name</span><input name="displayName" value={form.displayName} onChange={updateField} required maxLength={120} /></label>
               <label><span>Username</span><input name="username" value={form.username} onChange={updateField} required minLength={3} maxLength={32} pattern="(?:[a-zA-Z0-9._]|-)+" autoComplete="off" /></label>
               <label><span>Assigned store</span><input name="stockLocation" value={form.stockLocation} onChange={updateField} required maxLength={120} /></label>
-              <label><span>Temporary password (12+ characters)</span><input name="password" value={form.password} onChange={updateField} required minLength={12} maxLength={128} autoComplete="new-password" /></label>
+              <label><span>Initial password (12+ characters)</span><input name="password" type="password" value={form.password} onChange={updateField} required minLength={12} maxLength={128} autoComplete="new-password" /></label>
             </div>
-            <div className="staff-form-actions"><button type="button" className="button button-secondary" onClick={() => setForm((current) => ({ ...current, password: generatePassword() }))}>Generate password</button><button type="submit" className="button button-primary" disabled={saving}><Users size={15} />{saving ? 'Creating…' : 'Create account'}</button></div>
+            <div className="staff-form-actions"><button type="submit" className="button button-primary" disabled={saving}><Users size={15} />{saving ? 'Creating…' : 'Create account'}</button></div>
             {error && <div className="form-error" role="alert">{error}</div>}
+            {message && <div className="credential-notice" role="status">{message}</div>}
           </form>
-          {credential && <div className="credential-notice" role="status"><strong>Copy these credentials now</strong><span>Username: <code>{credential.username}</code></span><span>Password: <code>{credential.password}</code></span><small>The password is shown only after account creation and cannot be viewed again.</small></div>}
         </section>
         <section className="panel staff-panel">
           <div className="panel-heading"><div><h2>Existing accounts</h2><p>Account roles and stock assignments</p></div></div>
           {loading ? <div className="table-empty"><span className="spinner" /> Loading staff accounts…</div>
             : users.length === 0 ? <div className="table-empty"><strong>No staff accounts</strong><span>Create the first storekeeper account using the form.</span></div>
-              : <div className="table-scroll"><table className="data-table"><thead><tr><th>NAME</th><th>USERNAME</th><th>ROLE</th><th>ASSIGNED LOCATION</th></tr></thead><tbody>{users.map((staff) => <tr key={staff.id}><td><strong>{staff.displayName}</strong></td><td>{staff.username}</td><td>{staff.role === 'accountant' ? 'Accountant' : 'Storekeeper'}</td><td>{staff.stockLocation || 'All locations'}</td></tr>)}</tbody></table></div>}
+              : <div className="table-scroll"><table className="data-table"><thead><tr><th>NAME</th><th>USERNAME</th><th>ROLE</th><th>ASSIGNED LOCATION</th><th>ACCOUNT</th></tr></thead><tbody>{users.map((staff) => <tr key={staff.id}><td><strong>{staff.displayName}</strong></td><td>{staff.username}</td><td>{staff.role === 'accountant' ? 'Accountant' : 'Storekeeper'}</td><td>{staff.stockLocation || 'All locations'}</td><td>{staff.role === 'storekeeper' && <button className="staff-password-button" onClick={() => { setError(''); setMessage(''); setNewPassword(''); setPasswordTarget(staff) }}><KeyRound size={14} /> Change password</button>}</td></tr>)}</tbody></table></div>}
         </section>
       </div>
+      {passwordTarget && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !passwordSaving) setPasswordTarget(null) }}><section className="record-modal password-modal" role="dialog" aria-modal="true" aria-labelledby="password-modal-title"><div className="modal-heading"><div><span className="eyebrow">STAFF ACCOUNT</span><h2 id="password-modal-title">Change password</h2></div><button className="icon-button" onClick={() => setPasswordTarget(null)} aria-label="Close" disabled={passwordSaving}><X size={18} /></button></div><p className="modal-description">Set a new password for {passwordTarget.displayName}. The current password cannot be viewed, and the new password will not be displayed after saving.</p><form onSubmit={changePassword}><div className="form-grid staff-form-grid"><label className="form-wide"><span>New password (12–128 characters)</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={12} maxLength={128} autoComplete="new-password" autoFocus /></label></div>{error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="button button-secondary" onClick={() => setPasswordTarget(null)} disabled={passwordSaving}>Cancel</button><button type="submit" className="button button-primary" disabled={passwordSaving}><KeyRound size={15} />{passwordSaving ? 'Saving…' : 'Save new password'}</button></div></form></section></div>}
     </>
   )
 }

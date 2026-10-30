@@ -22,7 +22,7 @@ button { cursor: pointer; }
 .app-shell { min-height: 100vh; }
 .sidebar { position: fixed; z-index: 20; inset: 0 auto 0 0; width: 252px; max-height: 100vh; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding: 23px 15px 14px; background: #fff; border-right: 1px solid #eceef3; }
 .brand { display: flex; align-items: center; gap: 11px; padding: 0 9px 24px; }
-.brand-mark { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px 12px 12px 4px; color: #fff; background: #204878; font: 800 13px Manrope, sans-serif; letter-spacing: -.5px; box-shadow: 0 5px 12px #163c6928; }
+.brand-mark { width: 38px; height: 38px; flex: 0 0 auto; object-fit: contain; }
 .brand strong, .brand small, .school-switch strong, .school-switch small { display: block; }
 .brand strong { font: 800 11px Manrope, sans-serif; letter-spacing: .75px; color: #263248; }
 .brand small { margin-top: 4px; color: #9199a7; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; }
@@ -75,7 +75,7 @@ button { cursor: pointer; }
 .auth-loading { display: flex; gap: 9px; color: #778194; font-size: 12px; }
 .signin-shell { background: radial-gradient(ellipse at 50% 20%, #edf3fa 0, #f6f7fb 60%); }
 .signin-card { width: min(390px, 100%); padding: 32px; border: 1px solid #e7eaf0; border-radius: 12px; background: #fff; box-shadow: 0 12px 40px #1c31500e; }
-.signin-mark { width: 44px; height: 44px; margin-bottom: 21px; font-size: 15px; }
+.signin-mark { width: 58px; height: 58px; margin-bottom: 14px; }
 .signin-eyebrow { margin-bottom: 11px; }
 .signin-card h1 { margin: 0 0 8px; color: #20293b; font: 700 22px Manrope, sans-serif; letter-spacing: -.5px; }
 .signin-card > p { margin: 0 0 22px; color: #828b9b; font-size: 11px; line-height: 1.5; }
@@ -251,6 +251,9 @@ h1, h2, p { margin-top: 0; }
 .credential-notice { display: flex; flex-direction: column; gap: 6px; margin-top: 15px; padding: 12px; border: 1px solid #dcecdf; border-radius: 6px; color: #457a56; background: #f5fbf6; font-size: 10px; }
 .credential-notice code { padding: 2px 4px; border-radius: 3px; color: #30455a; background: #fff; font-family: ui-monospace, monospace; }
 .credential-notice small { margin-top: 3px; color: #77877b; }
+.staff-password-button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; border: 1px solid #e3e8ef; border-radius: 4px; color: #416d9e; background: #fff; font-size: 9px; font-weight: 600; white-space: nowrap; }
+.staff-password-button:hover { border-color: #b7c8dc; background: #f5f8fc; }
+.password-modal { width: min(460px, 100%); }
 .approval-actions { display: flex; align-items: center; gap: 6px; }
 .approve-button, .reject-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 25px; padding: 0 8px; border-radius: 4px; font-size: 8px; font-weight: 600; }
 .approve-button { color: #4c865e; border: 1px solid #dcecdf; background: #f2f8f3; }

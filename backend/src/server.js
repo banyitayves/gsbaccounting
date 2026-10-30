@@ -312,6 +312,29 @@ app.post('/api/users', async (request, response, next) => {
   }
 })
 
+app.patch('/api/users/:id/password', async (request, response, next) => {
+  const { id } = request.params
+  const { password } = request.body || {}
+  if (!/^\d+$/.test(id)) {
+    return response.status(400).json({ error: 'Staff account id is invalid.' })
+  }
+  if (typeof password !== 'string' || password.length < 12 || password.length > 128) {
+    return response.status(400).json({ error: 'Password must be between 12 and 128 characters.' })
+  }
+  try {
+    const [result] = await pool.execute(
+      'UPDATE accounting_users SET password_hash = ? WHERE id = ? AND role = ?',
+      [await bcrypt.hash(password, 12), id, 'storekeeper'],
+    )
+    if (!result.affectedRows) {
+      return response.status(404).json({ error: 'Storekeeper account not found.' })
+    }
+    response.json({ message: 'Storekeeper password changed.' })
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.use('/api/records', authenticate)
 
 app.get('/api/records', async (request, response, next) => {
